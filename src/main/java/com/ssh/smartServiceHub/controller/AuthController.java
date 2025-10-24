@@ -8,17 +8,23 @@ import com.ssh.smartServiceHub.entity.User;
 import com.ssh.smartServiceHub.mapper.UserMapper;
 import com.ssh.smartServiceHub.repository.UserRepository;
 import com.ssh.smartServiceHub.security.JwtUtil;
+import com.ssh.smartServiceHub.security.RevokedTokenService;
 import com.ssh.smartServiceHub.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Date;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -29,6 +35,9 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final UserService userService;
+
+    @Autowired
+    private RevokedTokenService revokedTokenService;
 
     public AuthController(UserRepository userRepository,
                           BCryptPasswordEncoder passwordEncoder,
@@ -73,5 +82,25 @@ public class AuthController {
 
         userRepository.save(user);
         return ResponseEntity.ok(new AuthResponse("User Registered"));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if(header == null || !header.startsWith("Bearer ")) {
+            return ResponseEntity.badRequest()
+                    .body(new LoginResponse(null, "No Bearer token in Authorization header"));
+        }
+
+        String token = header.substring(7);
+        if(!jwtUtil.validateToken(token)) {
+            return ResponseEntity.badRequest().body(new LoginResponse(null, "Invalid Token"));
+        }
+
+        Date expiresAt = jwtUtil.getExpirationDateFromToken(token);
+        revokedTokenService.revokeToken(token, expiresAt);
+
+        SecurityContextHolder.clearContext();
+        return ResponseEntity.ok(new LoginResponse(null, "Logged out successfully"));
     }
 }

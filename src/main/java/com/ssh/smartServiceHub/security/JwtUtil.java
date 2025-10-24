@@ -69,4 +69,9 @@ public class JwtUtil {
         if(rolesStr == null) Collections.emptyList();
         return Arrays.asList(rolesStr.split(","));
     }
+
+    public Date getExpirationDateFromToken(String token) {
+        Claims claims = Jwts.parser().setSigningKey(key()).build().parseClaimsJws(token).getBody();
+        return claims.getExpiration();
+    }
 }

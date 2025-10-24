@@ -23,6 +23,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final CustomUserDetailsService customUserDetailsService;
 
     @Autowired
+    private RevokedTokenService revokedTokenService;
+
+    @Autowired
     public JwtAuthenticationFilter(JwtUtil jwtUtil, CustomUserDetailsService customUserDetailsService) {
         this.jwtUtil = jwtUtil;
         this.customUserDetailsService = customUserDetailsService;
@@ -36,6 +39,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = parseJwt(request);
             if(jwt != null && jwtUtil.validateToken(jwt)) {
+                if(revokedTokenService != null && revokedTokenService.isTokenRevoked(jwt)) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 String username = jwtUtil.getUsernameFromToken(jwt);
                 UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
 
