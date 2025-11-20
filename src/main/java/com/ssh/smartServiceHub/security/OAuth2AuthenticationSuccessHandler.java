@@ -3,6 +3,8 @@ package com.ssh.smartServiceHub.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssh.smartServiceHub.dto.LoginResponse;
 import com.ssh.smartServiceHub.dto.UserDTO;
+import com.ssh.smartServiceHub.entity.RefreshToken;
+import com.ssh.smartServiceHub.service.RefreshTokenService;
 import com.ssh.smartServiceHub.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +30,9 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RefreshTokenService refreshTokenService;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -46,11 +51,16 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         var authority = new SimpleGrantedAuthority(role);
         var userDetails = new User(userDTO.getEmail(), "", Collections.singletonList(authority));
 
-        String token = jwtUtil.generateToken(userDetails);
+        String accessToken = jwtUtil.generateAccessToken(userDetails);
+
+        var userEntity = new com.ssh.smartServiceHub.entity.User();
+        userEntity.setId(userDTO.getId());
+        userEntity.setEmail(userDTO.getEmail());
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userEntity);
 
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        var logResp = new LoginResponse(token, "Login via Google successful");
+        var logResp = new LoginResponse(accessToken, refreshToken.getToken(), jwtUtil.getAccessTokenExpiryMs(), "Login via Google successful");
         response.getWriter().write(mapper.writeValueAsString(logResp));
     }
 }

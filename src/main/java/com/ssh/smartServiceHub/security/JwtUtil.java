@@ -1,5 +1,6 @@
 package com.ssh.smartServiceHub.security;
 
+import com.ssh.smartServiceHub.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -22,12 +23,20 @@ public class JwtUtil {
     @Value("${app.jwt.expiration-ms}")
     private long jwtxpirationMs;
 
+    @Value("${app.jwt.refreshExpirationMs}")
+    private long jwtRefreshExpirationMs;
+
     private Key key() {
         byte[] bytes = jwtSecret.getBytes();
         return Keys.hmacShaKeyFor(Arrays.copyOf(bytes, Math.max(32, bytes.length)));
     }
 
-    public String generateToken(UserDetails userDetails) {
+    private Key refreshKey() {
+        byte[] bytes = jwtSecret.getBytes();
+        return Keys.hmacShaKeyFor(Arrays.copyOf(bytes, Math.max(32, bytes.length)));
+    }
+
+    public String generateAccessToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
 
         String roles = userDetails.getAuthorities().stream()
@@ -39,11 +48,26 @@ public class JwtUtil {
         Date exp = new Date(now.getTime() + jwtxpirationMs);
 
         return Jwts.builder()
+                .setHeaderParam("typ", "JWT")
                 .claims(claims)
                 .subject(userDetails.getUsername())
                 .issuedAt(now)
                 .expiration(exp)
                 .signWith(key(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public String generateRefreshToken(User user) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtRefreshExpirationMs);
+
+        return Jwts.builder()
+                .setHeaderParam("typ", "JWT")
+                .claim("email", user.getEmail())
+                .subject(String.valueOf(user.getId()))
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(refreshKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -56,8 +80,22 @@ public class JwtUtil {
         }
     }
 
+    public boolean validateRefreshToken(String token) {
+        try {
+            Jwts.parser().setSigningKey(refreshKey()).build().parseClaimsJws(token);
+            return true;
+        } catch(JwtException ex) {
+            return false;
+        }
+    }
+
     public String getUsernameFromToken(String token) {
         Claims claims = Jwts.parser().setSigningKey(key()).build().parseClaimsJws(token).getBody();
+        return claims.getSubject();
+    }
+
+    public  String getUserIdFromRefreshToken(String token) {
+        Claims claims = Jwts.parser().setSigningKey(refreshKey()).build().parseClaimsJws(token).getBody();
         return claims.getSubject();
     }
 
@@ -73,5 +111,14 @@ public class JwtUtil {
     public Date getExpirationDateFromToken(String token) {
         Claims claims = Jwts.parser().setSigningKey(key()).build().parseClaimsJws(token).getBody();
         return claims.getExpiration();
+    }
+
+    public Date getExpirationDateFromRefreshToken(String token) {
+        Claims claims = Jwts.parser().setSigningKey(refreshKey()).build().parseClaimsJws(token).getBody();
+        return claims.getExpiration();
+    }
+
+    public long getAccessTokenExpiryMs() {
+        return jwtxpirationMs;
     }
 }
